@@ -35,5 +35,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/spring-app:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/spring-app:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/grid-gateway:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/grid-gateway:${{ github.sha }}
