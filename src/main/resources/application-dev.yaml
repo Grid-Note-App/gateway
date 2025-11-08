@@ -1,0 +1,6 @@
+server:
+  port: 9000
+env:
+  url:
+    frontend: http://localhost:3000
+    notes-service: http://localhost:8081
