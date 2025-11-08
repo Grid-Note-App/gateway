@@ -106,6 +106,7 @@ class UserEntity {
     private String firstName;
     private String lastName;
     private String email;
+    private String pictureUrl;
 
 }
 
@@ -154,12 +155,14 @@ class DownstreamTokenRelayFilter implements GlobalFilter {
 
         String firstName = principal.getGivenName();
         String lastName = principal.getFamilyName();
+        String picture = principal.getPicture();
 
         return userRepository.findByExternalId(externalId)
             .flatMap(existing -> {
                 existing.setEmail(email);
                 existing.setFirstName(firstName);
                 existing.setLastName(lastName);
+                existing.setPictureUrl(picture);
                 return userRepository.save(existing);
             })
             .switchIfEmpty(
@@ -168,6 +171,7 @@ class DownstreamTokenRelayFilter implements GlobalFilter {
                     .email(email)
                     .firstName(firstName)
                     .lastName(lastName)
+                    .pictureUrl(picture)
                     .build())
             );
     }
