@@ -1,6 +1,6 @@
 package com.grid.notes.gateway;
 
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -10,18 +10,25 @@ import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
@@ -53,6 +60,24 @@ public class GatewayApplication {
 
 }
 
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+class UserController {
+
+    private final UserEntityRepository userRepository;
+
+    @GetMapping("currentUser")
+    Mono<UserEntity> getCurrentUser(@AuthenticationPrincipal OidcUser principal) {
+        if (principal == null) {
+            return Mono.empty();
+        }
+        String externalId = principal.getSubject();
+        return userRepository.findByExternalId(externalId);
+    }
+}
+
+
 @Configuration
 @EnableWebFluxSecurity
 class SecurityConfig {
@@ -68,11 +93,34 @@ class SecurityConfig {
     }
 }
 
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Document("user_entity")
+class UserEntity {
+
+    @Id
+    private String id;
+    private String externalId;
+    private String firstName;
+    private String lastName;
+    private String email;
+
+}
+
+interface UserEntityRepository extends ReactiveMongoRepository<UserEntity, String> {
+
+    Mono<UserEntity> findByExternalId(String externalId);
+
+}
+
 @Component
 @RequiredArgsConstructor
 class DownstreamTokenRelayFilter implements GlobalFilter {
 
     private final ServerOAuth2AuthorizedClientRepository clientRepository;
+    private final UserEntityRepository userRepository;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -88,13 +136,39 @@ class DownstreamTokenRelayFilter implements GlobalFilter {
                     .flatMap(client -> {
                         OidcUser principal = (OidcUser) oauth2Auth.getPrincipal();
                         String idToken = principal.getIdToken().getTokenValue();
+                        return createOrUpdateUser(principal)
+                            .then(Mono.defer(() -> {
+                                ServerHttpRequest mutated = exchange.getRequest().mutate()
+                                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + idToken)
+                                    .build();
 
-                        ServerHttpRequest mutated = exchange.getRequest().mutate()
-                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + idToken)
-                            .build();
-
-                        return chain.filter(exchange.mutate().request(mutated).build());
+                                return chain.filter(exchange.mutate().request(mutated).build());
+                            }));
                     });
             });
+    }
+
+    private Mono<UserEntity> createOrUpdateUser(OidcUser principal) {
+        String externalId = principal.getSubject();
+        String email = principal.getEmail();
+
+        String firstName = principal.getGivenName();
+        String lastName = principal.getFamilyName();
+
+        return userRepository.findByExternalId(externalId)
+            .flatMap(existing -> {
+                existing.setEmail(email);
+                existing.setFirstName(firstName);
+                existing.setLastName(lastName);
+                return userRepository.save(existing);
+            })
+            .switchIfEmpty(
+                userRepository.save(UserEntity.builder()
+                    .externalId(externalId)
+                    .email(email)
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .build())
+            );
     }
 }

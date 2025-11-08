@@ -10,6 +10,9 @@ spring:
               - openid
               - profile
               - email
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
 env:
   url:
     frontend: http://frontend:80
