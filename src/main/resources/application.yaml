@@ -18,4 +18,4 @@ env:
   url:
     frontend: http://frontend:80
     notes-service: http://notes-service:8080
-    chat-service: http://chat-service:8080
+    chat-service: http://note-chat-service:8080
