@@ -35,23 +35,30 @@ import reactor.core.publisher.Mono;
 @SpringBootApplication
 public class GatewayApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(GatewayApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(GatewayApplication.class, args);
+    }
 
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder,
                                            @Value("${env.url.frontend}") String frontendUrl,
-                                           @Value("${env.url.notes-service}") String notesServiceUrl) {
+                                           @Value("${env.url.notes-service}") String notesServiceUrl,
+                                           @Value("${env.url.chat-service}") String chatServiceUrl) {
         return builder.routes()
-            .route("notes-service", r -> r
+            .route("chat-service", r -> r
                 .order(0)
+                .path("/api/ai/**")
+                .filters(f -> f.rewritePath("/api/ai/(?<segment>.*)", "/${segment}"))
+                .uri(chatServiceUrl)
+            )
+            .route("notes-service", r -> r
+                .order(10)
                 .path("/api/**")
                 .filters(f -> f.rewritePath("/api/(?<segment>.*)", "/${segment}"))
                 .uri(notesServiceUrl)
             )
             .route("frontend", r -> r
-                .order(10)
+                .order(100)
                 .path("/**")
                 .uri(frontendUrl)
             )
@@ -67,13 +74,36 @@ class UserController {
 
     private final UserEntityRepository userRepository;
 
+    @Builder
+    record UserResponse(
+        String id,
+        String externalId,
+        String firstName,
+        String lastName,
+        String email,
+        String pictureUrl,
+        String idToken
+    ) {
+
+    }
+
     @GetMapping("currentUser")
-    Mono<UserEntity> getCurrentUser(@AuthenticationPrincipal OidcUser principal) {
+    Mono<UserResponse> getCurrentUser(@AuthenticationPrincipal OidcUser principal) {
         if (principal == null) {
             return Mono.empty();
         }
         String externalId = principal.getSubject();
-        return userRepository.findByExternalId(externalId);
+        return userRepository.findByExternalId(externalId)
+            .map(entity -> UserResponse.builder()
+                .id(entity.getId())
+                .externalId(externalId)
+                .firstName(entity.getFirstName())
+                .lastName(entity.getLastName())
+                .email(entity.getEmail())
+                .pictureUrl(entity.getPictureUrl())
+                .idToken(principal.getIdToken().getTokenValue())
+                .build()
+            );
     }
 }
 
