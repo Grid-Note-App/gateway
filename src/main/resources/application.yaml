@@ -13,6 +13,7 @@ spring:
   data:
     mongodb:
       uri: ${MONGODB_URI}
+      database: notesapp
 env:
   url:
     frontend: http://frontend:80
